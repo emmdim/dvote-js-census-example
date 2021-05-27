@@ -1,10 +1,15 @@
 import * as fs from "fs"
-const { CensusOffChainApi, CensusOffchainDigestType, Gateway } = require("dvote-js")
+const { CensusOffChainApi, CensusOffchainDigestType, Gateway, GatewayInfo } = require("dvote-js")
 const { Wallet } = require("ethers")
 
 const NETWORK_ID = "goerli"
 const VOCDONI_ENVIRONMENT = "dev"
 const BOOTNODES_URL = "https://bootnodes.vocdoni.net/gateways.dev.json" // The uri from which contains the available gateway
+
+// If concrete gateway is used
+const GATEWAY_PUB_KEY = "02b42acf7899a8884168b0e62d8804501ce3330b4185f14805cd74b0e310da6746"
+const GATEWAY_DVOTE_URI = "https://gw2.dev.vocdoni.net/dvote"
+const GATEWAY_WEB3_URI = "https://rpc.slock.it/goerli"
 
 /**
  * TEST WALLET
@@ -27,8 +32,30 @@ const entityWallet = Wallet.fromMnemonic(WALLET_MNEMONIC) // The entity Wallet (
  * Initialize gateway
  */
 async function initGateway() {
+    //await initRandomGatewayFromUri()
+    await initGatewayFromInfo()
+}
+
+/**
+ * Initialize random gateway from uri
+ */
+async function initRandomGatewayFromUri() {
     try {
-        gw = await Gateway.randomfromUri(NETWORK_ID, BOOTNODES_URL, [], VOCDONI_ENVIRONMENT)
+        gw = await Gateway.randomfromUri(NETWORK_ID, BOOTNODES_URL, ['census'], VOCDONI_ENVIRONMENT)
+        await gw.init()
+    }
+    catch (err) {
+        console.error("The gateway can't be reached", err)
+    }
+}
+
+/**
+ * Initialize gateway from given information
+ */
+async function initGatewayFromInfo() {
+    try {
+        const gwInfo = new GatewayInfo(GATEWAY_DVOTE_URI, ['census'], GATEWAY_WEB3_URI, GATEWAY_PUB_KEY)
+        gw = await Gateway.fromInfo(gwInfo, VOCDONI_ENVIRONMENT)
         await gw.init()
     }
     catch (err) {
