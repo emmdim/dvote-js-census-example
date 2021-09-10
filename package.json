@@ -6,13 +6,16 @@
   "scripts": {
     "prestart": "npm run tsc",
     "start": "node index.js",
+    "build": "npm run clean && ./node_modules/.bin/tsc",
     "tsc": "tsc"
   },
   "author": "Vocdoni <root@vocdoni.io>",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "dvote-js": "*",
+    "dvote-js": "^1.6.2-beta-3",
     "ethers": "^5.2.0",
+    "qrcode": "^1.4.4",
+    "ts-node": "^10.2.1",
     "typescript": "^4.3.2"
   }
 }
