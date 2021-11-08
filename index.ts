@@ -205,7 +205,7 @@ async function publishVoteCensus() {
 }
 
 async function generateQR(processID: String, id: number) {
-    const fileName = __dirname+'/'+processID+'/'+publicKeys[id] + '.png'
+    const fileName = __dirname+'/'+processID+'/'+publicKeys[id] + '.svg'
     const url = BASE_URL + processID + '/' + privateKeys[id]
     try {
         await qrcode.toFile(fileName, url)
