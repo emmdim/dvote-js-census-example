@@ -12,8 +12,10 @@
   "author": "Vocdoni <root@vocdoni.io>",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "dvote-js": "^1.6.2-beta-3",
-    "ethers": "^5.2.0",
+    "csv-load-sync": "^2.3.1",
+    "csv-parse": "^5.0.4",
+    "dvote-js": "1.13.1",
+    "ethers": "^5.4.1",
     "qrcode": "^1.4.4",
     "ts-node": "^10.2.1",
     "typescript": "^4.3.2"
