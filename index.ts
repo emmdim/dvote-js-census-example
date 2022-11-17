@@ -11,7 +11,7 @@ const rl = readline.createInterface({
     output: process.stdout,
 })
 const util = require('util')
-const {load} = require('csv-load-sync');
+const { load } = require('csv-load-sync');
 
 // const question = util.promisify(rl.question).bind(rl)
 const question = (query: String) => new Promise((resolve) => rl.question(query, resolve))
@@ -21,10 +21,10 @@ const VOCDONI_ENVIRONMENT = "prod"
 const BOOTNODES_URL = "https://bootnodes.vocdoni.net/gateways.priv.json" // The uri from which contains the available gateway
 const ETH_PATH = "m/44'/60'/0'/0/1"
 // If concrete gateway is used
-const GATEWAY_PUB_KEY = "02b42acf7899a8884168b0e62d8804501ce3330b4185f14805cd74b0e310da6746"
-const GATEWAY_DVOTE_URI = "https://gw2.vocdoni.net/dvote"
+const GATEWAY_PUB_KEY = "039e20ccbe4d9ef068916117dc6216d94ebbf461eed2f7186fc080001cdfe43da4"
+const GATEWAY_DVOTE_URI = "https://gw2-azeno.vocdoni.net/dvote"
 const GATEWAY_WEB3_URI = "https://xdaiaragon.network"
-const BASE_URL = "https://oc.vocdoni.app/pub/votes/auth/link/#/"
+const BASE_URL = "https://vocdoni.app/pub/votes/auth/link/#/"
 
 /**
  * TEST WALLET
@@ -48,6 +48,7 @@ let privateKeys: string[] = [] // The list of public keys used to generate claim
 const entityWallet = Wallet.fromMnemonic(WALLET_MNEMONIC) // The entity Wallet (creator of the Census)
 
 let censusName: String
+let records: { Pes: string; Codi: string }[]
 
 /**
  * Initialize gateway
@@ -128,12 +129,38 @@ const digestedWalletFromString = (data: string) => {
 async function loadCensusPrivateKeysFromCSV() {
     try {
         // const strData = fs.readFileSync("isoc-census-2022.csv").toString()
-        const records: Object[] = load('./file.csv')
-        
+        let file = "file.csv"
+        let entityId = "0x..."
+        let columnNames = ""
+        let columns: string[] = []
+        try {
+            file = String(await question('CSV filename?\n'))
+        } catch (err) {
+            console.error('Question rejected', err);
+        }
+        try {
+            entityId = String(await question('entityId?\n'))
+        } catch (err) {
+            console.error('Question rejected', err);
+        }
+        try {
+            columnNames = String(await question('Column names to be used for pivKey (separ ated by commas - ;) or empty for all columns?\n'))
+            if (columnNames.length > 0) {
+                columns = columnNames.split(";").map(x => x.trim())
+            }
+        } catch (err) {
+            console.error('Question rejected', err);
+        }
+        const records: Object[] = load('./' + file)
+
         records.forEach(element => {
+            // console.log(element)
+            if (columns.length > 0)
+                element = Object.fromEntries(Object.entries(element).filter(x => columns.indexOf(x[0]) > -1))
+            // console.log(element)
             const normalizedRow = Object.values(element).map(x => normalizeText(x))
             // Concatenate the row with the entityId to get the payload to generate the private key
-            const payload = importedRowToString(normalizedRow, ethers.utils.getAddress("0x..."))            
+            const payload = importedRowToString(normalizedRow, ethers.utils.getAddress(entityId))
             const voterWallet: ethers.Wallet = digestedWalletFromString(payload)
             privateKeys.push(voterWallet.privateKey)
             publicKeys.push(voterWallet.publicKey)
@@ -145,10 +172,10 @@ async function loadCensusPrivateKeysFromCSV() {
         }
         storeCensusPrivateKeysToFile()
         storeCensusPublicKeysToFile()
-} catch (err) {
-    console.error("Could not read public keys file", err)
-    process.exit(1)
-}
+    } catch (err) {
+        console.error("Could not read public keys file", err)
+        process.exit(1)
+    }
 }
 
 function storeCensusPublicKeysToFile() {
@@ -245,8 +272,9 @@ async function publishVoteCensus() {
     fs.writeFileSync(infoFileName, infoData.join("\n"))
 }
 
-async function generateQR(processID: String, id: number) {
-    const fileName = __dirname + '/' + processID + '/' + publicKeys[id] + '.svg'
+async function generateQR(processID: String, id: number, records: { Pes: string; Codi: string }) {
+    // const fileName = __dirname + '/' + processID + '/' + privateKeys[id] + "-" + records["Id"] + "-" + records['Codi'] + '.svg'
+    const fileName = __dirname + '/' + processID + '/' + records['Pes'] + "-" + records['Codi'] + '.svg'
     const url = BASE_URL + processID + '/' + privateKeys[id]
     try {
         await qrcode.toFile(fileName, url)
@@ -262,7 +290,7 @@ async function publish() {
 }
 
 async function generateQRs() {
-    censusName = String(await question('Census Name?'))
+    censusName = String(await question('Census Name?\n'))
     loadCensusPublicKeysFromFile()
     loadCensusPrivateKeysFromFile()
 
@@ -270,9 +298,16 @@ async function generateQRs() {
         throw new Error("No privateKeys found");
     }
 
-    let processID = String(await question('Voting Process ID?'))
+    let processID = String(await question('Voting Process ID?\n'))
+    let file = "file.csv"
+    try {
+        file = String(await question('CSV filename?\n'))
+    } catch (err) {
+        console.error('Question rejected', err);
+    }
+    records = load('./' + file)
     fs.mkdirSync(__dirname + '/' + processID)
-    privateKeys.map((_, i) => generateQR(processID, i))
+    privateKeys.map((_, i) => generateQR(processID, i, records[i]))
 
 }
 
