@@ -2,7 +2,8 @@
   "name": "dvote-js-census-example",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "index.ts",
+  "type": "module",
   "scripts": {
     "prestart": "npm run tsc",
     "start": "node index.js",
@@ -12,12 +13,22 @@
   "author": "Vocdoni <root@vocdoni.io>",
   "license": "GPL-3.0-or-later",
   "dependencies": {
+    "@ethersproject/wallet": "^5.7.0",
+    "@types/qrcode": "^1.5.5",
+    "@vocdoni/sdk": "^0.6.1",
+    "canvas": "^2.9.1",
     "csv-load-sync": "^2.3.1",
     "csv-parse": "^5.0.4",
-    "dvote-js": "1.13.1",
-    "ethers": "^5.4.1",
+    "dotenv": "^16.3.1",
+    "dvote-js": "1.16.2",
+    "ethers": "^5.5.0",
+    "latinize": "^2.0.0",
+    "qr-code-styling": "^1.6.0-rc.1",
     "qrcode": "^1.4.4",
     "ts-node": "^10.2.1",
     "typescript": "^4.3.2"
+  },
+  "devDependencies": {
+    "@types/latinize": "^0.2.18"
   }
 }

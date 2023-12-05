@@ -1,30 +1,31 @@
-import { ethers } from "ethers"
+import { EnvOptions, VocdoniSDKClient } from "@vocdoni/sdk"
 import * as fs from "fs"
-const { CensusOffChainApi, Gateway, GatewayInfo, CensusOffChain, normalizeText } = require("dvote-js")
-// import { CensusOffChainApi, Gateway, GatewayInfo, CensusOffChain } from "dvote-js"
-const { Wallet } = require("ethers")
-const qrcode = require("qrcode")
+import dotenv from 'dotenv';
+dotenv.config()
+// const { CensusOffChainApi, Gateway, GatewayInfo, CensusOffChain, normalizeText } = require("dvote-js")
+import { Wallet } from "@ethersproject/wallet"
+import qrcode from "qrcode"
 
-const readline = require('readline')
+import readline from 'readline'
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
 })
-const util = require('util')
-const { load } = require('csv-load-sync');
+// import  { load } from 'csv-load-sync'
+import  csvLoadSync from 'csv-load-sync'
+import latinize from "latinize"  
+
 
 // const question = util.promisify(rl.question).bind(rl)
-const question = (query: String) => new Promise((resolve) => rl.question(query, resolve))
+const question = (query: string) => new Promise((resolve) => rl.question(query, resolve))
 
-const NETWORK_ID = "xdai"
-const VOCDONI_ENVIRONMENT = "prod"
-const BOOTNODES_URL = "https://bootnodes.vocdoni.net/gateways.priv.json" // The uri from which contains the available gateway
-const ETH_PATH = "m/44'/60'/0'/0/1"
-// If concrete gateway is used
-const GATEWAY_PUB_KEY = "039e20ccbe4d9ef068916117dc6216d94ebbf461eed2f7186fc080001cdfe43da4"
-const GATEWAY_DVOTE_URI = "https://gw2-azeno.vocdoni.net/dvote"
-const GATEWAY_WEB3_URI = "https://xdaiaragon.network"
-const BASE_URL = "https://vocdoni.app/pub/votes/auth/link/#/"
+const VOCDONI_ENVIRONMENT = EnvOptions.DEV
+const BASE_URL = "https://app.vocdoni.io/processes/"
+const ELECTION_ID = process.env.ELECTION_ID
+const ORG_ID = process.env.ORGANIZATION_ID
+console.log(ELECTION_ID)
+console.log(ORG_ID)
+
 
 /**
  * TEST WALLET
@@ -35,17 +36,19 @@ const BASE_URL = "https://vocdoni.app/pub/votes/auth/link/#/"
  * privateKey: '0x8c26c9510ac2f74ed9ae519e024d175cbed74490a84295a993ba3ed0792646a7'
  * publicKey: '0x04049892fcb0273154e09e19b5184bb7d99af647f4743a321523fdee78ed6a7688ac951c4bfdba98ac52754617865509433f9ce84bab6e82ed9e0d421b692d5694'
  */
-// const WALLET_MNEMONIC = "carry digital wear gift share wheel once amount dentist couch beauty jacket" // The Wallet mnemonic
-const WALLET_MNEMONIC = "lava wet scene minute catalog city nephew ugly lift impact tape negative" // The Wallet mnemonic
+
 const PUBLIC_KEYS_FILE = "public_keys_" // The relative path and name of the file containing the public keys
 const PRIVATE_KEYS_FILE = "private_keys_" // The relative path and name of the file containing the public keys
-const GENERATE_RANDOM_KEYS_NUM = 330 // The number of random generated wallets
+// const GENERATE_RANDOM_KEYS_NUM = 330 // The number of random generated wallets
 
 type Wall = typeof Wallet
-let gw: typeof Gateway // The Gateway instance connected to a remote Gateway
+let client: VocdoniSDKClient
 let publicKeys: string[] = [] // The list of public keys used to generate claims
 let privateKeys: string[] = [] // The list of public keys used to generate claims
-const entityWallet = Wallet.fromMnemonic(WALLET_MNEMONIC) // The entity Wallet (creator of the Census)
+// if (!process.env.WALLET_PRIVATE_KEY) {
+//     throw new Error("No WALLET_PRIVATE_KEY found");
+// }
+// const entityWallet = new Wallet(process.env.WALLET_PRIVATE_KEY) // The entity Wallet (creator of the Census)
 
 let censusName: String
 let records: { Pes: string; Codi: string }[]
@@ -54,36 +57,13 @@ let records: { Pes: string; Codi: string }[]
  * Initialize gateway
  */
 async function initGateway() {
-    await initRandomGatewayFromUri()
-    // await initGatewayFromInfo()
+    client = new VocdoniSDKClient({
+        env: VOCDONI_ENVIRONMENT,
+        // wallet: entityWallet
+        // electionId?
+    })
 }
 
-/**
- * Initialize random gateway from uri
- */
-async function initRandomGatewayFromUri() {
-    try {
-        gw = await Gateway.randomfromUri(NETWORK_ID, BOOTNODES_URL, ['census'], VOCDONI_ENVIRONMENT)
-        await gw.init()
-    }
-    catch (err) {
-        console.error("The gateway can't be reached", err)
-    }
-}
-
-/**
- * Initialize gateway from given information
- */
-async function initGatewayFromInfo() {
-    try {
-        const gwInfo = new GatewayInfo(GATEWAY_DVOTE_URI, ['census'], GATEWAY_WEB3_URI, GATEWAY_PUB_KEY)
-        gw = await Gateway.fromInfo(gwInfo, VOCDONI_ENVIRONMENT)
-        await gw.init()
-    }
-    catch (err) {
-        console.error("The gateway can't be reached", err)
-    }
-}
 
 /**
  * Reads file from disk containing the public keys
@@ -116,15 +96,47 @@ function loadCensusPrivateKeysFromFile() {
     }
 }
 
-const importedRowToString = (row: string[], entityId: string): string => {
-    return row.reduce((i, j) => { return i + j }) + entityId
+const caclulateVoterWallet = async (voterDataObject: object): Promise<Wallet>  => {
+    const normalizeText = (text?: string): string => {
+        if (!text) return ''
+
+        const result = text
+            .trim()
+            .replace(/\s+/g, ' ')
+            .replace(/[\.·:]/g, '.')
+            .replace(/[`´]/g, "'")
+            .normalize()
+            .toLowerCase()
+
+        return latinize(result)
+    }
+
+    const walletFromRow = (salt: string, row: string[]) => {
+        const normalized = row.map(normalizeText)
+        normalized.push(salt)
+        return VocdoniSDKClient.generateWalletFromData(normalized)
+    }
+
+    const hid = await client.electionService.getNumericElectionId(ELECTION_ID)
+    console.log("HID: ",hid)
+    const salt = await client.electionService.getElectionSalt(ORG_ID, hid)
+    console.log("SALT: ",salt)
+    console.log("VoterDataObject: ",voterDataObject)
+    return walletFromRow(salt, Object.values(voterDataObject))
 }
 
-const digestedWalletFromString = (data: string) => {
-    const bytes = ethers.utils.toUtf8Bytes(data)
-    const hashed = ethers.utils.keccak256(bytes)
-    return new ethers.Wallet(hashed)
-}
+
+
+
+// const importedRowToString = (row: string[], entityId: string): string => {
+//     return row.reduce((i, j) => { return i + j }) + entityId
+// }
+
+// const digestedWalletFromString = (data: string) => {
+//     const bytes = ethers.utils.toUtf8Bytes(data)
+//     const hashed = ethers.utils.keccak256(bytes)
+//     return new ethers.Wallet(hashed)
+// }
 
 async function loadCensusPrivateKeysFromCSV() {
     try {
@@ -138,11 +150,11 @@ async function loadCensusPrivateKeysFromCSV() {
         } catch (err) {
             console.error('Question rejected', err);
         }
-        try {
-            entityId = String(await question('entityId?\n'))
-        } catch (err) {
-            console.error('Question rejected', err);
-        }
+        // try {
+        //     entityId = String(await question('entityId?\n'))
+        // } catch (err) {
+        //     console.error('Question rejected', err);
+        // }
         try {
             columnNames = String(await question('Column names to be used for pivKey (separ ated by commas - ;) or empty for all columns?\n'))
             if (columnNames.length > 0) {
@@ -151,17 +163,18 @@ async function loadCensusPrivateKeysFromCSV() {
         } catch (err) {
             console.error('Question rejected', err);
         }
-        const records: Object[] = load('./' + file)
+        const records: Object[] = csvLoadSync.load('./' + file)
 
-        records.forEach(element => {
+        await records.forEach(async (element) => {
             // console.log(element)
             if (columns.length > 0)
                 element = Object.fromEntries(Object.entries(element).filter(x => columns.indexOf(x[0]) > -1))
             // console.log(element)
-            const normalizedRow = Object.values(element).map(x => normalizeText(x))
+            // const normalizedRow = Object.values(element).map(x => normalizeText(x))
             // Concatenate the row with the entityId to get the payload to generate the private key
-            const payload = importedRowToString(normalizedRow, ethers.utils.getAddress(entityId))
-            const voterWallet: ethers.Wallet = digestedWalletFromString(payload)
+            // const payload = importedRowToString(normalizedRow, ethers.utils.getAddress(entityId))
+            // const voterWallet: ethers.Wallet = digestedWalletFromString(payload)
+            const voterWallet = await caclulateVoterWallet(element)
             privateKeys.push(voterWallet.privateKey)
             publicKeys.push(voterWallet.publicKey)
         })
@@ -180,7 +193,7 @@ async function loadCensusPrivateKeysFromCSV() {
 
 function storeCensusPublicKeysToFile() {
     try {
-        fs.writeFileSync(__dirname + "/" + censusName + PUBLIC_KEYS_FILE + ".txt", publicKeys.join("\n"))
+        fs.writeFileSync("./" + censusName + PUBLIC_KEYS_FILE + ".txt", publicKeys.join("\n"))
     } catch (err) {
         console.error("Could not write public keys file", err)
         process.exit(1)
@@ -189,7 +202,7 @@ function storeCensusPublicKeysToFile() {
 
 function storeCensusPrivateKeysToFile() {
     try {
-        fs.writeFileSync(__dirname + "/" + censusName + PRIVATE_KEYS_FILE + ".txt", privateKeys.join("\n"))
+        fs.writeFileSync("./" + censusName + PRIVATE_KEYS_FILE + ".txt", privateKeys.join("\n"))
     } catch (err) {
         console.error("Could not read public keys file", err)
         process.exit(1)
@@ -201,9 +214,9 @@ function storeCensusPrivateKeysToFile() {
  *
  * @param num The number of wallets to generate
  */
-async function generateRandomCensusPublicKeys(num: Number = 10) {
+async function generateRandomCensusPublicKeys(num: number = 10) {
     for (let i = 0; i < num; i++) {
-        const wallet: Wall = Wallet.createRandom({ path: ETH_PATH }) as Wall
+        const wallet = Wallet.createRandom()
         // console.log(wallet.privateKey)
         // console.log(wallet.mnemonic)
         publicKeys.push(wallet.publicKey)
@@ -231,46 +244,46 @@ async function populateCensus() {
 /**
  * Asks the Gateway to create a new census, adds the public keys and publishes it
  */
-async function publishVoteCensus() {
+// async function publishVoteCensus() {
 
-    // Census parameters
-    const censusNameToUpload = censusName + Math.random().toString().substr(2, 6)
-    let infoFileName = __dirname + '/' + censusNameToUpload + '_info.txt'
-    let infoData: String[] = []
-    // Public key(s) that can manage this census
-    const managerPublicKeys = [entityWallet.publicKey]
-    // The list of claims to add (base64 encoded public key)
-    // console.log(publicKeys)
-    // console.log(gw)
-    const publicKeyClaimsList: { key: string }[] = publicKeys.map(k => (
-        { key: CensusOffChain.Public.encodePublicKey(k) }
-    ))
+//     // Census parameters
+//     const censusNameToUpload = censusName + Math.random().toString().substr(2, 6)
+//     let infoFileName = __dirname + '/' + censusNameToUpload + '_info.txt'
+//     let infoData: String[] = []
+//     // Public key(s) that can manage this census
+//     const managerPublicKeys = [entityWallet.publicKey]
+//     // The list of claims to add (base64 encoded public key)
+//     // console.log(publicKeys)
+//     // console.log(gw)
+//     const publicKeyClaimsList: { key: string }[] = publicKeys.map(k => (
+//         { key: CensusOffChain.Public.encodePublicKey(k) }
+//     ))
 
-    // Asks the Gateway to create a new census
-    let { censusId } = await CensusOffChainApi.addCensus(censusNameToUpload, managerPublicKeys, entityWallet, gw)
-    console.log(`Census added: "${censusNameToUpload}" with ID ${censusId}`)
-    infoData.push(`Census added: "${censusNameToUpload}" with ID ${censusId}`)
+//     // Asks the Gateway to create a new census
+//     let { censusId } = await CensusOffChainApi.addCensus(censusNameToUpload, managerPublicKeys, entityWallet, gw)
+//     console.log(`Census added: "${censusNameToUpload}" with ID ${censusId}`)
+//     infoData.push(`Census added: "${censusNameToUpload}" with ID ${censusId}`)
 
-    // Add claims to the new census
-    let result = await CensusOffChainApi.addClaimBulk(censusId, publicKeyClaimsList, true, entityWallet, gw)
-    console.log("Added", publicKeys.length, "claims to", censusId)
-    infoData.push("Added " + publicKeys.length + " claims to" + censusId)
-    // Show the invalid claims if exist
-    if (result.invalidClaims.length > 0) {
-        console.error("Invalid claims", result.invalidClaims)
-    }
+//     // Add claims to the new census
+//     let result = await CensusOffChainApi.addClaimBulk(censusId, publicKeyClaimsList, true, entityWallet, gw)
+//     console.log("Added", publicKeys.length, "claims to", censusId)
+//     infoData.push("Added " + publicKeys.length + " claims to" + censusId)
+//     // Show the invalid claims if exist
+//     if (result.invalidClaims.length > 0) {
+//         console.error("Invalid claims", result.invalidClaims)
+//     }
 
-    // Publish the census (make it public)
-    const merkleTreeOrigin = await CensusOffChainApi.publishCensus(censusId, entityWallet, gw)
-    console.log("Census published on", merkleTreeOrigin)
-    infoData.push("Census published on", merkleTreeOrigin)
+//     // Publish the census (make it public)
+//     const merkleTreeOrigin = await CensusOffChainApi.publishCensus(censusId, entityWallet, gw)
+//     console.log("Census published on", merkleTreeOrigin)
+//     infoData.push("Census published on", merkleTreeOrigin)
 
-    // Asks for the merkle root
-    const merkleRoot = await CensusOffChainApi.getRoot(censusId, gw)
-    console.log("Census Merkle Root:", merkleRoot)
-    infoData.push("Census Merkle Root: " + merkleRoot)
-    fs.writeFileSync(infoFileName, infoData.join("\n"))
-}
+//     // Asks for the merkle root
+//     const merkleRoot = await CensusOffChainApi.getRoot(censusId, gw)
+//     console.log("Census Merkle Root:", merkleRoot)
+//     infoData.push("Census Merkle Root: " + merkleRoot)
+//     fs.writeFileSync(infoFileName, infoData.join("\n"))
+// }
 
 async function generateQR(processID: String, id: number, records: { Pes: string; Codi: string }) {
     // const fileName = __dirname + '/' + processID + '/' + privateKeys[id] + "-" + records["Id"] + "-" + records['Codi'] + '.svg'
@@ -305,7 +318,7 @@ async function generateQRs() {
     } catch (err) {
         console.error('Question rejected', err);
     }
-    records = load('./' + file)
+    records = csvLoadSync.load('./' + file)
     fs.mkdirSync(__dirname + '/' + processID)
     privateKeys.map((_, i) => generateQR(processID, i, records[i]))
 
