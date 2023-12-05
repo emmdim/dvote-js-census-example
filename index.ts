@@ -1,5 +1,6 @@
 import { EnvOptions, VocdoniSDKClient } from "@vocdoni/sdk"
-import * as fs from "fs"
+import * as fs from "node:fs"
+import * as path from "node:path"
 import dotenv from 'dotenv';
 dotenv.config()
 // const { CensusOffChainApi, Gateway, GatewayInfo, CensusOffChain, normalizeText } = require("dvote-js")
@@ -20,7 +21,7 @@ import latinize from "latinize"
 const question = (query: string) => new Promise((resolve) => rl.question(query, resolve))
 
 const VOCDONI_ENVIRONMENT = EnvOptions.DEV
-const BASE_URL = "https://app.vocdoni.io/processes/"
+const BASE_URL = "https://app-dev.vocdoni.io/processes/"
 const ELECTION_ID = process.env.ELECTION_ID
 const ORG_ID = process.env.ORGANIZATION_ID
 console.log(ELECTION_ID)
@@ -70,7 +71,7 @@ async function initGateway() {
  */
 function loadCensusPublicKeysFromFile() {
     try {
-        const strData = fs.readFileSync(__dirname + "/" + censusName + PUBLIC_KEYS_FILE + ".txt").toString()
+        const strData = fs.readFileSync("./" + censusName + PUBLIC_KEYS_FILE + ".txt").toString()
         for (const line of strData.split(/[\r\n]+/)) {
             if (line) {
                 publicKeys.push(line)
@@ -84,7 +85,7 @@ function loadCensusPublicKeysFromFile() {
 
 function loadCensusPrivateKeysFromFile() {
     try {
-        const strData = fs.readFileSync(__dirname + "/" + censusName + PRIVATE_KEYS_FILE + ".txt").toString()
+        const strData = fs.readFileSync("./" + censusName + PRIVATE_KEYS_FILE + ".txt").toString()
         for (const line of strData.split(/[\r\n]+/)) {
             if (line) {
                 privateKeys.push(line)
@@ -118,10 +119,10 @@ const caclulateVoterWallet = async (voterDataObject: object): Promise<Wallet>  =
     }
 
     const hid = await client.electionService.getNumericElectionId(ELECTION_ID)
-    console.log("HID: ",hid)
+    // console.log("HID: ",hid)
     const salt = await client.electionService.getElectionSalt(ORG_ID, hid)
-    console.log("SALT: ",salt)
-    console.log("VoterDataObject: ",voterDataObject)
+    // console.log("SALT: ",salt)
+    // console.log("VoterDataObject: ",voterDataObject)
     return walletFromRow(salt, Object.values(voterDataObject))
 }
 
@@ -287,8 +288,8 @@ async function populateCensus() {
 
 async function generateQR(processID: String, id: number, records: { Pes: string; Codi: string }) {
     // const fileName = __dirname + '/' + processID + '/' + privateKeys[id] + "-" + records["Id"] + "-" + records['Codi'] + '.svg'
-    const fileName = __dirname + '/' + processID + '/' + records['Pes'] + "-" + records['Codi'] + '.svg'
-    const url = BASE_URL + processID + '/' + privateKeys[id]
+    const fileName = path.resolve('./' + processID + '/' + records['Pes'] + "-" + records['Codi'] + '.svg')
+    const url = BASE_URL + processID + '#' + privateKeys[id]
     try {
         await qrcode.toFile(fileName, url)
     } catch (err) {
@@ -311,16 +312,17 @@ async function generateQRs() {
         throw new Error("No privateKeys found");
     }
 
-    let processID = String(await question('Voting Process ID?\n'))
+    // let processID = String(await question('Voting Process ID?\n'))
+    let processID = ELECTION_ID
     let file = "file.csv"
     try {
         file = String(await question('CSV filename?\n'))
     } catch (err) {
         console.error('Question rejected', err);
     }
-    records = csvLoadSync.load('./' + file)
-    fs.mkdirSync(__dirname + '/' + processID)
-    privateKeys.map((_, i) => generateQR(processID, i, records[i]))
+    records = csvLoadSync.load(path.resolve('./' + file))
+    fs.mkdirSync(path.resolve('./' + ELECTION_ID))
+    privateKeys.map((_, i) => generateQR(ELECTION_ID, i, records[i]))
 
 }
 
